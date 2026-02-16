@@ -150,7 +150,9 @@ def hmac_proof(key: bytes, transcript: bytes) -> str:
 # -------------------- IBM run helper --------------------
 
 def run_on_ibm_sampler(qc: QuantumCircuit, backend_name: str, shots: int = 1024):
-    service = QiskitRuntimeService()
+    with open('./APIs/IBM_API.txt', 'r') as file:
+        token = file.read()
+    service = QiskitRuntimeService(channel='ibm_cloud', token=token)
     backend = service.backend(backend_name)
     with Session(service=service, backend=backend) as session:  # :contentReference[oaicite:4]{index=4}
         sampler = Sampler(mode=session)                         # :contentReference[oaicite:5]{index=5}
