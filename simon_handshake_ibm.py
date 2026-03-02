@@ -7,8 +7,9 @@ import numpy as np
 
 from qiskit import QuantumCircuit
 from qiskit.qpy import dump as qpy_dump, load as qpy_load
+from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
-from qiskit_ibm_runtime import QiskitRuntimeService, Session, SamplerV2 as Sampler  # :contentReference[oaicite:3]{index=3}
+from qiskit_ibm_runtime import QiskitRuntimeService, fake_provider, Session, SamplerV2 as Sampler  # :contentReference[oaicite:3]{index=3}
 
 HOST = "127.0.0.1"
 PORT = 5055
@@ -153,13 +154,18 @@ def run_on_ibm_sampler(qc: QuantumCircuit, backend_name: str, shots: int = 1024)
     with open('./APIs/IBM_API.txt', 'r') as file:
         token = file.read()
     service = QiskitRuntimeService(channel='ibm_cloud', token=token)
-    backend = service.backend(backend_name)
-    with Session(service=service, backend=backend) as session:  # :contentReference[oaicite:4]{index=4}
+    if backend_name == "ibm_brisbane":
+        backend = fake_provider.FakeBrisbane()
+    else:
+        backend = service.backend(backend_name)
+    pm = generate_preset_pass_manager(backend=backend, optimization_level=1)
+    isa_circuit = pm.run(qc)
+    with Session(backend=backend) as session:  # :contentReference[oaicite:4]{index=4}
         sampler = Sampler(mode=session)                         # :contentReference[oaicite:5]{index=5}
-        job = sampler.run([qc], shots=shots)
+        job = sampler.run([isa_circuit], shots=shots)
         res = job.result()[0]
         # Return counts as {bitstring: count}
-        return res.data.cr.get_counts()
+        return res.data.c.get_counts()
 
 # -------------------- roles --------------------
 
