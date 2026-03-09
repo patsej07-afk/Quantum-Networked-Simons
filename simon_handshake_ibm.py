@@ -113,22 +113,39 @@ def apply_linear_map(qc, x, y, M):
             if M[row, col] == 1:
                 qc.cx(x[col], y[row])
 
-def build_simon_oracle(n, s_bits):
+def build_simon_oracle(n: int, s_bits: list):
+    '''
+    Build a valid Simon oracle U_f such that f(x)=f(x⊕s) (2-to-1 with period s).
+    Args:
+        n (int): number of bits (and qubits) for x and y.
+        s_bits (list of int): list of n bits representing the secret string s.
+    Returns:
+        QuantumCircuit: implemention of U_f on 2n qubits.
+    '''
+
+    # TODO: Fix lingering bug with some states, e.g. [1, 1, 1, 1, 1]
     s = np.array(s_bits, dtype=np.uint8)
     if not np.any(s == 1):
         raise ValueError("Simon requires nonzero s")
-    M = random_invertible_matrix(n)
+    # M = random_invertible_matrix(n)
 
     qc = QuantumCircuit(2 * n, name="U_f")
-    x = list(range(n))
-    y = list(range(n, 2 * n))
 
-    apply_linear_map(qc, x, y, M)               # y ^= Mx
-    Ms = (M @ s) % 2
-    ctrl = x[0]
     for i in range(n):
-        if Ms[i] == 1:
-            qc.cx(ctrl, y[i])                   # if x0==1: y ^= Ms
+        qc.cx(i, i+n)
+    control_bit = s_bits.index(1)
+    for j in range(n):
+        if s[j] == 1:
+            qc.cx(control_bit, j+n)
+    # x = list(range(n))
+    # y = list(range(n, 2 * n))
+
+    # apply_linear_map(qc, x, y, M)               # y ^= Mx
+    # Ms = (M @ s) % 2
+    # ctrl = x[0]
+    # for i in range(n):
+    #     if Ms[i] == 1:
+    #         qc.cx(ctrl, y[i])                   # if x0==1: y ^= Ms
     return qc
 
 def build_simon_circuit(n, oracle: QuantumCircuit):
@@ -169,9 +186,10 @@ def run_on_ibm_sampler(qc: QuantumCircuit, backend_name: str, shots: int = 1024)
 
 # -------------------- roles --------------------
 
-def alice(n=5, backend_name="ibm_brisbane"):
+def alice(n=5):
     # 1) choose secret s and nonceA
-    s = [secrets.randbelow(2) for _ in range(n)]
+    # s = [secrets.randbelow(2) for _ in range(n)]
+    s = [1, 1, 1, 1, 1]
     while all(b == 0 for b in s):
         s = [secrets.randbelow(2) for _ in range(n)]
     nonce_a = secrets.token_bytes(16)
