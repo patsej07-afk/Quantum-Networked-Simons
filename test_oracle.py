@@ -1,6 +1,8 @@
 import pytest
 from simon_handshake_ibm import *
 
+# To run the tests in this file, type "pytest -p no:warnings" in terminal
+
 def test_build_simon_oracle_all_1():
     n = 5
     s = [1, 1, 1, 1, 1]
