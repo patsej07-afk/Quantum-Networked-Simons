@@ -123,7 +123,6 @@ def build_simon_oracle(n: int, s_bits: list):
         QuantumCircuit: implemention of U_f on 2n qubits.
     '''
 
-    # TODO: Fix lingering bug with some states, e.g. [1, 1, 1, 1, 1]
     s = np.array(s_bits, dtype=np.uint8)
     if not np.any(s == 1):
         raise ValueError("Simon requires nonzero s")
@@ -178,7 +177,7 @@ def run_on_ibm_sampler(qc: QuantumCircuit, backend_name: str, shots: int = 1024)
     pm = generate_preset_pass_manager(backend=backend, optimization_level=1)
     isa_circuit = pm.run(qc)
     with Session(backend=backend) as session:  # :contentReference[oaicite:4]{index=4}
-        sampler = Sampler(mode=session)                         # :contentReference[oaicite:5]{index=5}
+        sampler = Sampler(mode=session)        # :contentReference[oaicite:5]{index=5}
         job = sampler.run([isa_circuit], shots=shots)
         res = job.result()[0]
         # Return counts as {bitstring: count}
@@ -189,7 +188,7 @@ def run_on_ibm_sampler(qc: QuantumCircuit, backend_name: str, shots: int = 1024)
 def alice(n=5):
     # 1) choose secret s and nonceA
     # s = [secrets.randbelow(2) for _ in range(n)]
-    s = [1, 1, 1, 1, 1]
+    s = [1] * n         # Use the string of all 1s
     while all(b == 0 for b in s):
         s = [secrets.randbelow(2) for _ in range(n)]
     nonce_a = secrets.token_bytes(16)
@@ -253,10 +252,11 @@ def bob(backend_name="ibm_brisbane", shots=2048):
         # Build Simon circuit and run on IBM backend
         qc = build_simon_circuit(n, oracle)
         counts = run_on_ibm_sampler(qc, backend_name=backend_name, shots=shots)
+        sorted_counts = dict(sorted(counts.items(), key=lambda item: -item[1]))
 
         # Extract independent y samples (constraints y·s=0)
         samples = []
-        for bitstr, ct in counts.items():
+        for bitstr, ct in sorted_counts.items():
             y = np.array([int(b) for b in bitstr[::-1]], dtype=np.uint8)  # endian fix
             if np.any(y == 1):
                 samples.append(y)
