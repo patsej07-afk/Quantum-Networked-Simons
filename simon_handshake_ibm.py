@@ -15,10 +15,22 @@ from qiskit.transpiler.passmanager import StagedPassManager
 from qiskit_ibm_runtime import QiskitRuntimeService, fake_provider, Session
 from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 
-# -------------------- networking constants --------------------
+# -------------------- constants --------------------
 
 HOST = '127.0.0.1'
 PORT = 5055
+BACKEND_NAME = 'ibm_fake_brisbane'
+# BACKEND_NAME = 'ibm_noiseless_simulator'
+# BACKEND_NAME = 'ibm_kingstone'
+# BACKEND_NAME = 'ibm_fez'
+# BACKEND_NAME = 'ibm_marrakesh'
+NS = [2, 4, 6]
+ITERS = 100
+# ITERS = 1000000
+SHOTS = 0
+# SHOTS = 20
+# SHOTS = 200
+OPTIMIZATION_LEVEL = 1
 
 # -------------------- networking helpers --------------------
 
@@ -335,6 +347,8 @@ def alice(ns: int|list, iters: int):
     successesDict = dict()
     if type(ns) == int:
         ns = [ns]
+    
+    # Setup server socket and listen for Bob's connection
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv:
         srv.bind((HOST, PORT))
         srv.listen(1)
@@ -342,58 +356,91 @@ def alice(ns: int|list, iters: int):
         conn, _ = srv.accept()
 
         with conn:
+            # Iterate over all requested rounds and bit widths
             for i in range(1, iters + 1):
                 print(f'[Alice] Start iteration {i}')
                 for n in ns:
                     print(f'[Alice] Begin n       = {n}')
-                    # 1) choose secret s and nonceA
-                    s = [1] * n         # Use the string of all 1s
+                    
+                    # Step 1: Choose secret s and generate nonce
+                    s = [1] * n
                     nonce_a = secrets.token_bytes(16)
-
+                    
+                    # Build the Simon oracle with the secret
                     oracle = build_simon_oracle(n, s)
-                    # 2) hello
-                    send_json(conn, {'type': 'hello', 'proto': 'simon-hs', 'n': n, 'nonce_a': nonce_a.hex()})
+                    
+                    # Step 2: Send hello message with n and nonce_a
+                    send_json(
+                        conn,
+                        {
+                            'type': 'hello',
+                            'proto': 'simon-hs',
+                            'n': n,
+                            'nonce_a': nonce_a.hex()
+                        }
+                    )
                     msg = recv_json(conn)
                     if msg.get('type') != 'hello_ack':
                         raise RuntimeError('bad ack')
                     nonce_b = bytes.fromhex(msg['nonce_b'])
                     backend_b = msg['backend']
 
-                    # 3) send oracle circuit (QPY)
+                    # Step 3: Send oracle circuit (serialized as QPY)
                     send_json(conn, {'type': 'oracle_qpy'})
                     send_qpy_circuit(conn, oracle)
 
-                    # 4) receive proof from Bob
+                    # Step 4: Receive proof from Bob
                     proof_msg = recv_json(conn)
                     if proof_msg.get('type') != 'proof':
                         raise RuntimeError('missing proof')
                     proof_hex = proof_msg['hmac']
 
-                    # 5) derive session key (Alice knows s already)
-                    s_bytes = bytes(int(''.join(map(str, s)), 2).to_bytes((n + 7)//8, 'big'))
-                    session_key = kdf_session_key(s_bytes, nonce_a, nonce_b)
+                    # Step 5: Derive session key and verify proof
+                    s_bytes = bytes(
+                        int(''.join(map(str, s)), 2).to_bytes(
+                            (n + 7)//8, 'big'
+                        )
+                    )
+                    session_key = kdf_session_key(
+                        s_bytes, nonce_a, nonce_b
+                    )
 
-                    transcript = (f'n={n}|nonce_a={nonce_a.hex()}|nonce_b={nonce_b.hex()}|backend={backend_b}').encode()
+                    transcript = (
+                        f'n={n}|nonce_a={nonce_a.hex()}|'
+                        f'nonce_b={nonce_b.hex()}|backend={backend_b}'
+                    ).encode()
                     expected = hmac_proof(session_key, transcript)
                     isSuccess = hmac.compare_digest(expected, proof_hex)
 
+                    # Log results for this round
                     print(f'[Alice] secret s      = {s}')
-                    # print(f'[Alice] session key   = {session_key.hex()[:32]}...')
                     print(f'[Alice] proof valid?  = {isSuccess}')
+                    
+                    # Accumulate success count for this n
                     if n not in successesDict.keys():
                         successesDict[n] = int(isSuccess)
                     else:
                         successesDict[n] += int(isSuccess)
 
     print('[Alice] Connection disconnected')
-    normalizedSuccessesDict = {k: v/iters for k, v in successesDict.items()}
-    with open(
-        f'./data/{BACKEND_NAME}-{str(NS)}-{ITERS}-{SHOTS}-{OPTIMIZATION_LEVEL}',
-        'w+'
-    ) as file:
+    
+    # Normalize results and save to file
+    normalizedSuccessesDict = {
+        k: v/iters for k, v in successesDict.items()
+    }
+    filename = (
+        f'./data/{BACKEND_NAME}-{str(NS)}-{ITERS}-'
+        f'{SHOTS}-{OPTIMIZATION_LEVEL}'
+    )
+    with open(filename, 'w+') as file:
         file.write(str(normalizedSuccessesDict))
 
-def bob(backend_name: str, optimization_level: int, shots: int):
+
+def bob(
+    backend_name: str,
+    optimization_level: int,
+    shots: int
+):
     '''
     Perform the Bob role of the Simon handshake protocol.
     Args:
@@ -405,68 +452,97 @@ def bob(backend_name: str, optimization_level: int, shots: int):
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sck:
         sck.connect((HOST, PORT))
 
-        backend, pm = get_ibm_backend_and_pm(backend_name, optimization_level=optimization_level)
+        # Get IBM backend and transpilation pass manager
+        backend, pm = get_ibm_backend_and_pm(
+            backend_name,
+            optimization_level=optimization_level
+        )
 
         while True:
             try:
+                # Step 1: Receive hello from Alice
                 hello = recv_json(sck)
             except ConnectionError:
                 print('[Bob] Connection disconnected')
                 break
+                
             if hello.get('type') != 'hello':
                 raise RuntimeError('bad hello')
             n = int(hello['n'])
             nonce_a = bytes.fromhex(hello['nonce_a'])
+            
+            # Generate Bob's nonce
             nonce_b = secrets.token_bytes(16)
 
-            send_json(sck, {'type': 'hello_ack', 'nonce_b': nonce_b.hex(), 'backend': backend_name})
+            # Step 2: Send hello acknowledgment with nonce_b
+            send_json(
+                sck,
+                {
+                    'type': 'hello_ack',
+                    'nonce_b': nonce_b.hex(),
+                    'backend': backend_name
+                }
+            )
 
-            # oracle incoming
+            # Step 3: Receive oracle circuit (serialized as QPY)
             msg = recv_json(sck)
             if msg.get('type') != 'oracle_qpy':
                 raise RuntimeError('expected oracle')
             oracle = recv_qpy_circuit(sck)
 
-            # Build Simon circuit and run on IBM backend
+            # Step 4: Build and execute Simon circuit on IBM backend
             qc = build_simon_circuit(n, oracle)
-            counts = run_on_ibm_sampler(qc, backend, pm, shots=n+shots)
-            sorted_counts = dict(sorted(counts.items(), key=lambda item: -item[1]))
+            counts = run_on_ibm_sampler(
+                qc, backend, pm, shots=n + shots
+            )
+            sorted_counts = dict(
+                sorted(counts.items(), key=lambda item: -item[1])
+            )
 
-            # Extract independent y samples (constraints y·s=0)
+            # Step 5: Extract and filter measurement samples
+            # Convert bitstrings to binary vectors, keeping only non-zero
+            # samples that represent valid constraints y·s=0
             samples = []
             for bitstr, ct in sorted_counts.items():
-                y = np.array([int(b) for b in bitstr[::-1]], dtype=np.uint8)  # endian fix
+                y = np.array(
+                    [int(b) for b in bitstr[::-1]], # Reverse for endian fix
+                    dtype=np.uint8
+                )
                 if np.any(y == 1):
                     samples.append(y)
-                if len(samples) >= 2 * n:  # usually enough
+                if len(samples) >= n + (n - 3):
                     break
-            A = np.vstack(samples) if samples else np.zeros((0, n), dtype=np.uint8)
+            
+            # Step 6: Solve linear system over GF(2) to recover s
+            # Build matrix A where each row is a constraint vector y
+            # such that y·s ≡ 0 (mod 2). Find one vector in nullspace.
+            A = (
+                np.vstack(samples)
+                if samples
+                else np.zeros((0, n), dtype=np.uint8)
+            )
             s_hat = gf2_nullspace_vector(A)
 
-            # derive same session key from recovered s_hat
-            s_int = int(''.join(str(int(b)) for b in s_hat.tolist()), 2)
+            # Step 7: Derive session key from recovered s_hat
+            s_int = int(
+                ''.join(str(int(b)) for b in s_hat.tolist()), 2
+            )
             s_bytes = s_int.to_bytes((n + 7)//8, 'big')
-            session_key = kdf_session_key(s_bytes, nonce_a, nonce_b)
+            session_key = kdf_session_key(
+                s_bytes, nonce_a, nonce_b
+            )
 
-            transcript = (f'n={n}|nonce_a={nonce_a.hex()}|nonce_b={nonce_b.hex()}|backend={backend_name}').encode()
+            # Step 8: Create HMAC proof and send to Alice
+            transcript = (
+                f'n={n}|nonce_a={nonce_a.hex()}|'
+                f'nonce_b={nonce_b.hex()}|backend={backend_name}'
+            ).encode()
             proof = hmac_proof(session_key, transcript)
 
             print(f'[Bob] recovered s_hat = {s_hat.tolist()}')
-            # print(f'[Bob] session key     = {session_key.hex()[:32]}...')
-
             send_json(sck, {'type': 'proof', 'hmac': proof})
 
 # -------------------- main --------------------
-
-# BACKEND_NAME = 'ibm_fake_brisbane'
-BACKEND_NAME = 'ibm_noiseless_simulator'
-# BACKEND_NAME = 'ibm_kingstone'
-# BACKEND_NAME = 'ibm_fez'
-# BACKEND_NAME = 'ibm_marrakesh'
-NS = [2, 4, 6]
-ITERS = 1
-SHOTS = 20
-OPTIMIZATION_LEVEL = 1
 
 if __name__ == '__main__':
     import sys
@@ -476,6 +552,7 @@ if __name__ == '__main__':
     else:
         bob(BACKEND_NAME, OPTIMIZATION_LEVEL, SHOTS)
 
+# -------------------- archived functions --------------------
 
 # def alice(n=2):
 #     # 1) choose secret s and nonceA
