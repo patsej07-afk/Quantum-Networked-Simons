@@ -18,17 +18,18 @@ from qiskit.transpiler.preset_passmanagers import generate_preset_pass_manager
 # -------------------- constants --------------------
 
 HOST = '127.0.0.1'
-PORT = 5055
-BACKEND_NAME = 'ibm_fake_brisbane'
-# BACKEND_NAME = 'ibm_noiseless_simulator'
+PORT = 5057
+# BACKEND_NAME = 'ibm_fake_brisbane'
+BACKEND_NAME = 'ibm_noiseless_simulator'
 # BACKEND_NAME = 'ibm_kingstone'
 # BACKEND_NAME = 'ibm_fez'
 # BACKEND_NAME = 'ibm_marrakesh'
-NS = [2, 4, 6]
+NS = [2, 4, 6, 8]
+# NS = [2, 4, 6, 8, 10, 12, 14, 16, 18]
 ITERS = 100
 # ITERS = 1000000
-SHOTS = 0
-# SHOTS = 20
+# SHOTS = 0
+SHOTS = 20
 # SHOTS = 200
 OPTIMIZATION_LEVEL = 1
 
@@ -435,7 +436,6 @@ def alice(ns: int|list, iters: int):
     with open(filename, 'w+') as file:
         file.write(str(normalizedSuccessesDict))
 
-
 def bob(
     backend_name: str,
     optimization_level: int,
@@ -498,10 +498,16 @@ def bob(
             sorted_counts = dict(
                 sorted(counts.items(), key=lambda item: -item[1])
             )
+            with open(
+                f'./data/{backend_name}-raw-{n}-{ITERS}-{shots}-{OPTIMIZATION_LEVEL}.txt',
+                'a+'
+            ) as file:
+                file.write(str(sorted_counts) + '\n')
 
             # Step 5: Extract and filter measurement samples
             # Convert bitstrings to binary vectors, keeping only non-zero
             # samples that represent valid constraints y·s=0
+            # TODO: Need better decoding function
             samples = []
             for bitstr, ct in sorted_counts.items():
                 y = np.array(
