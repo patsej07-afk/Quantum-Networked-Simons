@@ -1,0 +1,14 @@
+MIXGATES 0
+a W owire
+b W owire
+a IN |0\rangle$\textcolor{white}{...}$
+b IN |0\rangle$\textcolor{white}{...}$
+a / n
+b / n
+a H
+a b G $U_f$ width=20
+b M
+a TOUCH
+a H
+a M
+DEPTHPAD 10

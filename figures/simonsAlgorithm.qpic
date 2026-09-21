@@ -1,0 +1,18 @@
+MIXGATES 0
+a W owire $\text{Client}$<
+b c W owire owire $\text{Server}$<
+a IN |0\rangle$\textcolor{white}{...}$
+b IN |0\rangle$\textcolor{white}{...}$
+c IN |0\rangle$\textcolor{white}{...}$
+a / n
+b / n
+c / n
+a H
+a b SWAP style=dotted
+b c G $U_f$ width=20
+c M
+b TOUCH
+a b SWAP style=dotted
+a H
+a M
+DEPTHPAD 10
