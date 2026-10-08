@@ -8,11 +8,11 @@ a / n
 b / n
 c / n
 a H
-a b SWAP style=dotted
+a b SWAP style=dashed
 b c G $U_f$ width=20
 c M
 b TOUCH
-a b SWAP style=dotted
+a b SWAP style=dashed
 a H
 a M
 DEPTHPAD 10
