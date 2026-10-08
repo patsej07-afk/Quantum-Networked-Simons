@@ -28,9 +28,9 @@ The repository structure is as follows:
 
 ```
 adiabatic-simons-algorithm/
-├── simon_handshake.py                # Executes the classical version of the network verification file
+├── simon_handshake.py                # Executes approximate network verification
 ├── test_oracle.py                    # Tests the oracle function
-├── noisySimulations/                 # Contains code and results for noisy simulations of the ideal protocol
+├── noisySimulations/                 # Code and results for noisy simulations
 ├── figures/                          # Contains figures for the paper
 ├── archive/                          # Old code, data, and figure files
 ├── .gitignore                        # Git ignore file (e.g., system files)
