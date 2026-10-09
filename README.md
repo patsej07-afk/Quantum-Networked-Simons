@@ -3,7 +3,7 @@
 This repository contains an implementation of a **pedagogical approximation** of a quantum network admission protocol using classical communication.
 A client uses a quantum computer to query a Simon oracle and returns the recovered hidden string to a server, which checks the answer and the response time.
 Because the client receives the oracle implementation, a classical attacker may recover the hidden string without quantum queries; this approximation **does not verify quantum network integrity**.
-See the associated paper for the full protocol description: [paper link].
+See the associated paper for the full protocol description: [https://arxiv.org/abs/2610.12209](https://arxiv.org/abs/2610.12209).
 
 ## Table of Contents
 
